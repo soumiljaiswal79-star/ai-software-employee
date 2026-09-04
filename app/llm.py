@@ -2,17 +2,23 @@ import json
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI, OpenAIError
+from google import genai
+from google.genai import errors, types
 
-from .tools.registry import TOOL_DEFINITIONS, execute_tool
+from .tools.registry import GEMINI_TOOLS, execute_tool
 
 load_dotenv()
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+MAX_TOOL_ROUNDS = 5
+
 LLM_INSTRUCTIONS = (
-    "You are an AI Software Employee. You may inspect project files only through "
-    "the provided filesystem tools, which are limited to workspace/. When a user "
-    "asks about files or project contents, use the relevant tool before answering. "
-    "Never access or describe arbitrary server paths."
+    "You are an AI Software Employee working inside a controlled workspace. "
+    "You can inspect project files using the available filesystem tools. "
+    "Use list_files when you need to understand the project structure. "
+    "Use read_file when you need to inspect a specific file. "
+    "Never claim that you inspected a file unless you actually used the appropriate tool. "
+    "Never access files outside workspace/."
 )
 
 
@@ -20,74 +26,114 @@ class LLMConfigurationError(RuntimeError):
     """Raised when the LLM is not configured."""
 
 
+class LLMAuthenticationError(RuntimeError):
+    """Raised when Gemini rejects the configured credentials."""
+
+
+class LLMRateLimitError(RuntimeError):
+    """Raised when Gemini quota or rate limits are reached."""
+
+
 class LLMServiceError(RuntimeError):
     """Raised when the LLM cannot return a response."""
 
 
+def _raise_gemini_error(error: errors.APIError) -> None:
+    if getattr(error, "code", None) in (401, 403):
+        raise LLMAuthenticationError("Gemini authentication failed.") from error
+    if getattr(error, "code", None) == 429:
+        raise LLMRateLimitError("Gemini quota or rate limit exceeded.") from error
+    raise LLMServiceError("The Gemini API could not process the request.") from error
+
+
+def _generate_response(
+    client: genai.Client, contents: list[types.Content]
+) -> types.GenerateContentResponse:
+    try:
+        return client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=LLM_INSTRUCTIONS,
+                tools=GEMINI_TOOLS,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                ),
+            ),
+        )
+    except errors.APIError as error:
+        _raise_gemini_error(error)
+    except Exception as error:
+        raise LLMServiceError("The Gemini API could not process the request.") from error
+
+
+def _function_calls(
+    response: types.GenerateContentResponse,
+) -> list[types.FunctionCall]:
+    if not response.candidates or not response.candidates[0].content:
+        return []
+
+    return [
+        part.function_call
+        for part in response.candidates[0].content.parts or []
+        if part.function_call is not None
+    ]
+
+
+def _run_tool(function_call: types.FunctionCall) -> dict[str, object]:
+    name = function_call.name
+    arguments = function_call.args
+
+    if not isinstance(name, str) or not name:
+        return {"error": "Malformed tool call."}
+    if arguments is None:
+        arguments = {}
+    if not isinstance(arguments, dict):
+        return {"error": "Malformed tool call."}
+
+    return execute_tool(name, arguments)
+
+
 def get_llm_response(message: str) -> tuple[str, list[str]]:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise LLMConfigurationError(
-            "OPENAI_API_KEY is not configured. Add it to the environment before using /chat."
+            "GEMINI_API_KEY is not configured. Add it to the environment before using /chat."
         )
 
-    client = OpenAI(api_key=api_key)
-
-    try:
-        result = client.responses.create(
-            model="gpt-4o-mini",
-            input=message,
-            instructions=LLM_INSTRUCTIONS,
-            tools=TOOL_DEFINITIONS,
-        )
-    except OpenAIError as error:
-        raise LLMServiceError("The language model could not process the request.") from error
-
+    client = genai.Client(api_key=api_key)
+    contents = [
+        types.Content(role="user", parts=[types.Part.from_text(text=message)])
+    ]
+    result = _generate_response(client, contents)
     tools_used: list[str] = []
 
-    for _ in range(5):
-        tool_calls = [
-            item
-            for item in result.output
-            if getattr(item, "type", None) == "function_call"
-        ]
-
+    for _ in range(MAX_TOOL_ROUNDS):
+        tool_calls = _function_calls(result)
         if not tool_calls:
-            return result.output_text, tools_used
+            if not result.text:
+                raise LLMServiceError("Gemini returned an empty response.")
+            return result.text, tools_used
 
-        tool_outputs = []
+        if not result.candidates or not result.candidates[0].content:
+            raise LLMServiceError("Gemini returned an invalid tool response.")
+        contents.append(result.candidates[0].content)
+
         for tool_call in tool_calls:
-            tool_name = tool_call.name
-            if tool_name not in tools_used:
-                tools_used.append(tool_name)
-
-            try:
-                arguments = json.loads(tool_call.arguments or "{}")
-                if not isinstance(arguments, dict):
-                    raise ValueError("Tool arguments must be a JSON object.")
-                tool_result = execute_tool(tool_name, arguments)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                tool_result = {"error": "The tool arguments were invalid."}
-
-            tool_outputs.append(
-                {
-                    "type": "function_call_output",
-                    "call_id": tool_call.call_id,
-                    "output": json.dumps(tool_result),
-                }
+            if tool_call.name and tool_call.name not in tools_used:
+                tools_used.append(tool_call.name)
+            contents.append(
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_function_response(
+                            name=tool_call.name or "",
+                            response={"result": _run_tool(tool_call)},
+                        )
+                    ],
+                )
             )
 
-        try:
-            result = client.responses.create(
-                model="gpt-4o-mini",
-                previous_response_id=result.id,
-                input=tool_outputs,
-                instructions=LLM_INSTRUCTIONS,
-                tools=TOOL_DEFINITIONS,
-            )
-        except OpenAIError as error:
-            raise LLMServiceError(
-                "The language model could not process the tool result."
-            ) from error
+        result = _generate_response(client, contents)
 
-    raise LLMServiceError("The language model used too many tool calls.")
+    raise LLMServiceError("The language model used too many tool-calling rounds.")

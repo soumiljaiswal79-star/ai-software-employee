@@ -1,0 +1,304 @@
+## Replace OpenAI with Gemini
+
+We are switching the AI Software Employee from OpenAI to Google's Gemini API.
+
+IMPORTANT:
+- Do NOT rebuild the application.
+- Preserve the existing FastAPI architecture.
+- Preserve GET /.
+- Preserve POST /chat.
+- Preserve the existing filesystem tools:
+  - list_files
+  - read_file
+- Preserve the existing tool registry.
+- Preserve all filesystem security protections.
+- Do NOT implement write_file yet.
+- Do NOT add terminal execution.
+- Do NOT add Docker.
+- Do NOT add GitHub.
+- Do NOT add database.
+- Do NOT add frontend.
+- Do NOT add autonomous behavior.
+
+The only goal of this task is to replace the OpenAI LLM integration with Gemini.
+
+==================================================
+1. REMOVE OPENAI DEPENDENCY
+==================================================
+
+Remove the OpenAI Python SDK from requirements.txt.
+
+Remove python code that imports:
+
+openai
+
+Do not leave unused OpenAI integration code behind.
+
+==================================================
+2. ADD GEMINI SDK
+==================================================
+
+Add the official Google Gemini Python SDK:
+
+google-genai
+
+Keep python-dotenv if it is still required by the project.
+
+==================================================
+3. ENVIRONMENT VARIABLE
+==================================================
+
+The application must read:
+
+GEMINI_API_KEY
+
+from the environment.
+
+Never hard-code the API key.
+
+Never return the API key in an API response.
+
+Never log the API key.
+
+Update .env.example so it contains:
+
+GEMINI_API_KEY=
+
+Do not put a real API key in .env.example.
+
+==================================================
+4. UPDATE app/llm.py
+==================================================
+
+Replace the OpenAI implementation with the official Google GenAI Python SDK.
+
+Use:
+
+from google import genai
+
+Create the Gemini client using the GEMINI_API_KEY environment variable.
+
+Use this stable model initially:
+
+gemini-2.5-flash
+
+Keep the model name in one configuration constant/environment variable so it can easily be changed later.
+
+For example:
+
+GEMINI_MODEL=gemini-2.5-flash
+
+If GEMINI_MODEL is not configured, default to:
+
+gemini-2.5-flash
+
+==================================================
+5. PRESERVE FUNCTION CALLING
+==================================================
+
+The existing filesystem tools must continue to work through Gemini function calling.
+
+The model must be able to call:
+
+list_files
+
+read_file
+
+The application should:
+
+1. Send the user's request to Gemini with the available tools.
+2. Detect function calls requested by Gemini.
+3. Execute the corresponding local filesystem tool.
+4. Send the tool result back to Gemini.
+5. Allow Gemini to continue.
+6. Return the final natural-language response.
+
+Keep the tool-call loop bounded.
+
+Use a maximum of 5 tool-calling rounds.
+
+Never create an infinite loop.
+
+==================================================
+6. TOOL DEFINITIONS
+==================================================
+
+Preserve the existing tool behavior.
+
+Do not weaken any filesystem security checks.
+
+Gemini must only receive tools that are explicitly registered.
+
+Currently the available tools are:
+
+list_files
+read_file
+
+No shell commands.
+
+No Python execution.
+
+No arbitrary code execution.
+
+==================================================
+7. SYSTEM INSTRUCTIONS
+==================================================
+
+Preserve the existing AI Software Employee identity/instructions.
+
+The employee should understand:
+
+"You are an AI Software Employee working inside a controlled workspace.
+
+You can inspect project files using the available filesystem tools.
+
+Use list_files when you need to understand the project structure.
+
+Use read_file when you need to inspect the contents of a specific file.
+
+Never claim that you inspected a file unless you actually used the appropriate tool.
+
+Never access files outside workspace/."
+
+Keep the instructions concise.
+
+==================================================
+8. API RESPONSE
+==================================================
+
+Keep:
+
+POST /chat
+
+request:
+
+{
+    "message": "..."
+}
+
+response:
+
+{
+    "response": "...",
+    "tools_used": [...]
+}
+
+Example:
+
+{
+    "response": "The project contains README.md and hello.py.",
+    "tools_used": ["list_files"]
+}
+
+==================================================
+9. ERROR HANDLING
+==================================================
+
+Handle these cases clearly:
+
+- GEMINI_API_KEY missing
+- Gemini API authentication error
+- Gemini quota/rate-limit error
+- Gemini API failure
+- malformed tool call
+- unknown tool
+- filesystem tool failure
+
+Do not expose secrets in error messages.
+
+Return appropriate HTTP errors from FastAPI.
+
+==================================================
+10. TESTING
+==================================================
+
+Use the existing:
+
+workspace/demo-project/
+
+with:
+
+README.md
+hello.py
+
+Test:
+
+"Inspect the project and tell me what files are present."
+
+Gemini should call:
+
+list_files
+
+Then test:
+
+"Read hello.py and explain what it does."
+
+Gemini should call:
+
+read_file
+
+Also test:
+
+"Read ../../etc/passwd"
+
+This must be rejected by the filesystem security layer.
+
+Do not repeatedly call the Gemini API during automated testing.
+
+Use mocked Gemini responses where appropriate.
+
+==================================================
+11. CLEANUP
+==================================================
+
+Remove OpenAI-specific code and dependencies.
+
+Do not leave dead OpenAI code.
+
+Make sure:
+
+requirements.txt
+
+contains the Gemini SDK and only dependencies actually required by the application.
+
+==================================================
+12. VERIFICATION
+==================================================
+
+Verify:
+
+GET / works.
+
+POST /chat works with Gemini when GEMINI_API_KEY is configured.
+
+GET /docs works.
+
+list_files works through Gemini function calling.
+
+read_file works through Gemini function calling.
+
+Path traversal remains blocked.
+
+Absolute paths remain blocked.
+
+No API keys appear in source code.
+
+No API keys appear in responses.
+
+Tool loop remains bounded.
+
+Application starts successfully.
+
+At the end, report:
+
+1. Files changed.
+2. Files created.
+3. Dependencies changed.
+4. Gemini model used.
+5. Environment variables required.
+6. Tool-calling implementation.
+7. Security checks.
+8. Test results.
+9. Any remaining issues.
+
+Do not modify anything unrelated to this migration.

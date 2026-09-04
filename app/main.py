@@ -1,7 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .llm import LLMConfigurationError, LLMServiceError, get_llm_response
+from .llm import (
+    LLMAuthenticationError,
+    LLMConfigurationError,
+    LLMRateLimitError,
+    LLMServiceError,
+    get_llm_response,
+)
 
 app = FastAPI(title="AI Software Employee")
 
@@ -24,6 +30,10 @@ def chat(request: ChatRequest) -> dict[str, object]:
         response, tools_used = get_llm_response(request.message)
     except LLMConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    except LLMAuthenticationError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except LLMRateLimitError as error:
+        raise HTTPException(status_code=429, detail=str(error)) from error
     except LLMServiceError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 

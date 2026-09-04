@@ -1,5 +1,7 @@
 from typing import Any, Callable
 
+from google.genai import types
+
 from .filesystem import list_files, read_file
 
 
@@ -47,6 +49,19 @@ TOOL_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "list_files": list_files,
     "read_file": read_file,
 }
+
+GEMINI_TOOLS = [
+    types.Tool(
+        function_declarations=[
+            types.FunctionDeclaration(
+                name=definition["name"],
+                description=definition["description"],
+                parameters_json_schema=definition["parameters"],
+            )
+            for definition in TOOL_DEFINITIONS
+        ]
+    )
+]
 
 
 def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:

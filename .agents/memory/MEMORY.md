@@ -1,0 +1,1 @@
+- [Python environment setup](python-environment.md) — Python base modules may lack pip; use a Python tools module for third-party packages.

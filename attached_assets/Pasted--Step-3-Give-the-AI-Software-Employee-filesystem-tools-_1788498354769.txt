@@ -1,0 +1,173 @@
+## Step 3 — Give the AI Software Employee filesystem tools
+
+Extend the existing AI Software Employee project.
+
+IMPORTANT:
+- Do not rebuild the project from scratch.
+- Preserve the existing GET / endpoint.
+- Preserve the existing POST /chat endpoint unless changes are necessary for tool calling.
+- Keep the implementation simple and modular.
+- Do not add GitHub, terminal execution, Docker, database, memory, frontend, or autonomous loops yet.
+
+GOAL:
+
+Make the AI employee capable of inspecting files inside a dedicated "workspace" directory.
+
+The employee should be able to decide when it needs to use these tools:
+
+1. list_files
+2. read_file
+
+PROJECT STRUCTURE:
+
+Create:
+
+workspace/
+
+Create:
+
+app/tools/
+
+Create:
+
+app/tools/filesystem.py
+
+FILESYSTEM TOOLS:
+
+Implement:
+
+list_files()
+
+Purpose:
+- Return the files and directories inside the workspace directory.
+- Recursively list files so the employee can understand the project structure.
+- Return relative paths rather than absolute filesystem paths.
+
+Implement:
+
+read_file(path)
+
+Purpose:
+- Read the contents of a text file inside workspace/.
+- Accept only a relative path.
+- Prevent path traversal attacks such as:
+  ../
+  ../../
+  /etc/passwd
+- Never allow access outside workspace/.
+- Return a clear error if the file does not exist.
+- Handle binary files safely by rejecting them instead of trying to decode them.
+
+SECURITY:
+
+The AI must NEVER be able to access arbitrary files on the Replit machine through these tools.
+
+Both tools must be restricted to:
+
+workspace/
+
+For example:
+
+workspace/myproject/main.py
+
+is allowed.
+
+But:
+
+../../secrets.txt
+
+must be rejected.
+
+AI TOOL CALLING:
+
+Update the LLM integration so the model can use these two custom function tools.
+
+Use the current OpenAI Responses API/function-tool approach supported by the official OpenAI Python SDK.
+
+The model should be able to:
+
+1. Receive the user's request.
+2. Decide whether it needs to inspect files.
+3. Call list_files if needed.
+4. Call read_file if needed.
+5. Receive the tool result.
+6. Continue reasoning and provide a final response.
+
+Do NOT allow arbitrary Python execution or shell commands.
+
+Add clear tool descriptions so the model understands when to use each tool.
+
+Create a clean tool registry/module rather than putting all tool definitions directly inside main.py.
+
+API:
+
+Keep POST /chat working.
+
+For now, POST /chat can continue accepting:
+
+{
+  "message": "..."
+}
+
+The response should still be:
+
+{
+  "response": "..."
+}
+
+If practical, also include a simple "tools_used" field so we can see whether the employee actually used a filesystem tool.
+
+Example:
+
+{
+  "response": "...",
+  "tools_used": ["list_files", "read_file"]
+}
+
+Do not expose internal API keys, absolute server paths, or sensitive environment variables.
+
+TESTING:
+
+Create a small test project inside workspace/:
+
+workspace/
+└── demo-project/
+    ├── README.md
+    └── hello.py
+
+README.md should contain a short description of the demo project.
+
+hello.py should contain a simple Python program.
+
+Then test the employee with:
+
+"Inspect the project in workspace and tell me what files are present."
+
+The model should use list_files.
+
+Then test:
+
+"Read hello.py and explain what it does."
+
+The model should use read_file.
+
+Also test security by attempting to read:
+
+../../etc/passwd
+
+and verify that access is rejected.
+
+Verify:
+- GET / still works.
+- POST /chat still works.
+- /docs still works.
+- Filesystem tools work.
+- Path traversal is blocked.
+- No secrets are exposed.
+
+After implementation, report:
+1. Files created
+2. Files changed
+3. How tool calling works
+4. How the filesystem is secured
+5. Test results

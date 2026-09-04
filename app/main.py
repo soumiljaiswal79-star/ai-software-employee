@@ -19,12 +19,12 @@ def get_status() -> dict[str, str]:
 
 
 @app.post("/chat")
-def chat(request: ChatRequest) -> dict[str, str]:
+def chat(request: ChatRequest) -> dict[str, object]:
     try:
-        response = get_llm_response(request.message)
+        response, tools_used = get_llm_response(request.message)
     except LLMConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except LLMServiceError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
-    return {"response": response}
+    return {"response": response, "tools_used": tools_used}

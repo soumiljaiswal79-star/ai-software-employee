@@ -7,4 +7,4 @@ Use a Python tools module when a Python project needs third-party packages; the 
 
 **Why:** The initial dependency installation failed because the configured base module had no pip and the system Python was externally managed.
 
-**How to apply:** Check the configured module before installing Python dependencies, and add the appropriate tools module when pip is unavailable.
+**How to apply:** Check the configured module before installing Python dependencies, and add the appropriate tools module when pip is unavailable. Review the dependency file after installer runs because entries may be appended more than once.

@@ -1,0 +1,70 @@
+We have successfully completed the file-tool milestone: the AI Software Employee can now inspect files and create/modify files using list_files, read_file, and write_file.
+
+Now implement the NEXT milestone: safe code execution and testing.
+
+Before making changes, inspect the entire current project structure and existing code. Do not remove or break any existing functionality.
+
+Requirements:
+
+1. Add a new tool called `run_command` or `run_tests` that allows the AI Software Employee to execute project commands ONLY inside the controlled `workspace/` directory.
+
+2. SECURITY IS CRITICAL:
+   - Never allow arbitrary commands to execute on the Replit host outside `workspace/`.
+   - Never allow commands such as `rm -rf`, disk formatting, system shutdown, privilege escalation, or commands that access secrets/environment variables.
+   - Do not expose API keys, environment variables, filesystem paths outside `workspace/`, or system secrets to the model.
+   - Use a strict command allowlist rather than allowing unrestricted shell execution.
+   - Initially support only safe development/testing commands such as:
+     - `python <file.py>`
+     - `python -m pytest`
+     - `python -m unittest`
+   - Reject unsupported commands.
+   - Set a timeout for executed commands.
+   - Capture stdout, stderr, exit code, and whether the command timed out.
+   - Limit output size so a program cannot flood the response.
+
+3. The tool must execute commands with `workspace/` as the working directory.
+
+4. Add the new tool to the existing tool registry so Gemini can call it through function calling.
+
+5. Update the Gemini system instructions so the AI knows:
+   - It can run safe tests using the new tool.
+   - It should inspect relevant files before modifying them.
+   - After modifying code, it should run an appropriate test.
+   - If a test fails, it should inspect the failure and attempt a correction.
+   - It must never claim a test passed unless the tool actually returned a successful exit code.
+
+6. Keep the existing:
+   - list_files
+   - read_file
+   - write_file
+   functionality unchanged.
+
+7. Add a small test project under:
+   `workspace/demo-project/`
+
+   Use the existing `hello.py` if appropriate, and add a simple test that can be executed safely.
+
+8. Add automated tests for the new command-execution tool covering:
+   - allowed Python command
+   - pytest/unittest command
+   - rejected unsupported command
+   - timeout handling
+   - output-size limiting
+   - execution staying inside workspace
+
+9. Do NOT add Docker yet. We will introduce a stronger sandbox later. For this milestone, use a strict allowlist, workspace-only working directory, timeout, and output limits.
+
+10. After implementation, verify the application still starts and `/docs` still works.
+
+11. Do not use OpenAI. Keep Gemini as the only LLM provider.
+
+12. Do not modify or expose `GEMINI_API_KEY`.
+
+At the end, give me a concise summary of:
+- files created/modified
+- how the new tool works
+- security restrictions
+- tests performed
+- whether the application starts successfully
+
+Do not proceed to GitHub integration, autonomous commits, pull requests, or multi-agent functionality yet. This task is ONLY for the safe code execution/testing milestone.

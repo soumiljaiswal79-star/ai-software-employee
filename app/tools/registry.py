@@ -2,6 +2,7 @@ from typing import Any, Callable
 
 from google.genai import types
 
+from .commands import run_command
 from .filesystem import list_files, read_file, write_file
 
 
@@ -68,6 +69,29 @@ TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "run_command",
+        "description": (
+            "Run one safe Python command from workspace/. Supported commands are "
+            "python <relative .py file>, python -m pytest, and python -m unittest. "
+            "Commands have a timeout and bounded output; shell commands are rejected."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": (
+                        "One supported command, such as "
+                        "'python demo-project/hello.py' or 'python -m unittest'."
+                    ),
+                }
+            },
+            "required": ["command"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -75,6 +99,7 @@ TOOL_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "list_files": list_files,
     "read_file": read_file,
     "write_file": write_file,
+    "run_command": run_command,
 }
 
 

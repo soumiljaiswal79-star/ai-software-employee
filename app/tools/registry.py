@@ -2,7 +2,7 @@ from typing import Any, Callable
 
 from google.genai import types
 
-from .filesystem import list_files, read_file
+from .filesystem import list_files, read_file, write_file
 
 
 TOOL_DEFINITIONS = [
@@ -42,13 +42,41 @@ TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "write_file",
+        "description": (
+            "Create or overwrite a UTF-8 text file inside workspace/. "
+            "Use this when you need to create or modify a project file. "
+            "The path must be relative and stay inside workspace/."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Relative path inside workspace/, such as demo-project/app.py."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The complete UTF-8 text content to write.",
+                },
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
 TOOL_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "list_files": list_files,
     "read_file": read_file,
+    "write_file": write_file,
 }
+
 
 GEMINI_TOOLS = [
     types.Tool(

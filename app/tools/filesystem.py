@@ -49,9 +49,7 @@ def list_files() -> dict[str, list[str]]:
     ):
         current_path = Path(current_root)
         directory_names[:] = sorted(
-            name
-            for name in directory_names
-            if not (current_path / name).is_symlink()
+            name for name in directory_names if not (current_path / name).is_symlink()
         )
         file_names = sorted(
             name for name in file_names if not (current_path / name).is_symlink()
@@ -85,3 +83,29 @@ def read_file(path: str) -> dict[str, Any]:
         return {"error": f"Unable to read file: {path}"}
 
     return {"path": _relative_path(safe_path), "content": content}
+
+
+def write_file(path: str, content: str) -> dict[str, Any]:
+    """Create or overwrite a UTF-8 text file strictly inside workspace/."""
+    try:
+        safe_path = _safe_path(path)
+    except ValueError as error:
+        return {"error": str(error)}
+
+    if not isinstance(content, str):
+        return {"error": "File content must be text."}
+
+    # Prevent accidentally writing extremely large files.
+    if len(content.encode("utf-8")) > 1_000_000:
+        return {"error": "File content is too large. Maximum size is 1 MB."}
+
+    try:
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_path.write_text(content, encoding="utf-8")
+    except OSError:
+        return {"error": f"Unable to write file: {path}"}
+
+    return {
+        "path": _relative_path(safe_path),
+        "message": "File written successfully.",
+    }

@@ -120,3 +120,30 @@ def git_commit(message: str) -> dict[str, Any]:
         return staged_result
 
     return _run_git(["commit", "-m", message])
+
+
+def git_push(branch_name: str) -> dict[str, Any]:
+    """Push a local branch to the configured origin remote."""
+    if not isinstance(branch_name, str) or not branch_name.strip():
+        return _error("A branch name is required.")
+
+    branch_name = branch_name.strip()
+
+    if len(branch_name) > 100:
+        return _error("Branch name is too long.")
+
+    if not _BRANCH_NAME_PATTERN.fullmatch(branch_name):
+        return _error("Invalid branch name.")
+
+    if ".." in branch_name:
+        return _error("Branch name cannot contain '..'.")
+
+    if branch_name.startswith("-"):
+        return _error("Branch name cannot start with '-'.")
+
+    return _run_git([
+        "push",
+        "--set-upstream",
+        "origin",
+        branch_name,
+    ])

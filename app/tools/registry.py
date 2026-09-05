@@ -11,7 +11,12 @@ from .git import (
     git_create_branch,
     git_diff,
     git_init,
+    git_push,
     git_status,
+)
+from .github import (
+    github_auth_status,
+    github_get_repository,
 )
 
 
@@ -139,6 +144,58 @@ TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "git_push",
+        "description": (
+            "Push a local Git branch to the configured origin remote. "
+            "Only pushes the specified branch."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Safe Git branch name to push.",
+                }
+            },
+            "required": ["branch_name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "github_auth_status",
+        "description": (
+            "Check whether the configured GitHub token is valid and return "
+            "the authenticated GitHub username. Never expose the token."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "github_get_repository",
+        "description": (
+            "Check whether the authenticated GitHub account can access a "
+            "specific repository and return basic repository information."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": "GitHub repository owner username or organization.",
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+            },
+            "required": ["owner", "repository"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -152,6 +209,9 @@ TOOL_HANDLERS = {
     "git_diff": git_diff,
     "git_create_branch": git_create_branch,
     "git_commit": git_commit,
+    "git_push": git_push,
+    "github_auth_status": github_auth_status,
+    "github_get_repository": github_get_repository,
 }
 
 

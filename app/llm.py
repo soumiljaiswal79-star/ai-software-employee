@@ -57,14 +57,16 @@ def _raise_gemini_error(error: errors.APIError) -> None:
 
 
 def _generate_response(
-    client: genai.Client, contents: list[types.Content]
+    client: genai.Client,
+    contents: list[types.Content],
+    system_instruction: str = LLM_INSTRUCTIONS,
 ) -> types.GenerateContentResponse:
     try:
         return client.models.generate_content(
             model=GEMINI_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction=LLM_INSTRUCTIONS,
+                system_instruction=system_instruction,
                 tools=GEMINI_TOOLS,
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
@@ -104,18 +106,65 @@ def _run_tool(function_call: types.FunctionCall) -> dict[str, object]:
     return execute_tool(name, arguments)
 
 
-def get_llm_response(message: str) -> tuple[str, list[str]]:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise LLMConfigurationError(
-            "GEMINI_API_KEY is not configured. Add it to the environment before using /chat."
+class GeminiConversation:
+    """A single Gemini conversation that can be shared by chat or task agents."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        system_instruction: str = LLM_INSTRUCTIONS,
+    ) -> None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise LLMConfigurationError(
+                "GEMINI_API_KEY is not configured. Add it to the environment before using /chat."
+            )
+
+        self.client = genai.Client(api_key=api_key)
+        self.system_instruction = system_instruction
+        self.contents: list[types.Content] = [
+            types.Content(role="user", parts=[types.Part.from_text(text=message)])
+        ]
+
+    def request(self) -> types.GenerateContentResponse:
+        return _generate_response(
+            self.client,
+            self.contents,
+            system_instruction=self.system_instruction,
         )
 
-    client = genai.Client(api_key=api_key)
-    contents = [
-        types.Content(role="user", parts=[types.Part.from_text(text=message)])
-    ]
-    result = _generate_response(client, contents)
+    def append_model_response(self, response: types.GenerateContentResponse) -> None:
+        if not response.candidates or not response.candidates[0].content:
+            raise LLMServiceError("Gemini returned an invalid tool response.")
+        self.contents.append(response.candidates[0].content)
+
+    def append_tool_result(
+        self,
+        function_call: types.FunctionCall,
+        result: dict[str, object],
+    ) -> None:
+        self.contents.append(
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_function_response(
+                        name=function_call.name or "",
+                        response={"result": result},
+                    )
+                ],
+            )
+        )
+
+    def append_user_message(self, message: str) -> None:
+        self.contents.append(
+            types.Content(role="user", parts=[types.Part.from_text(text=message)])
+        )
+
+
+def get_llm_response(message: str) -> tuple[str, list[str]]:
+    conversation = GeminiConversation(message)
+    result = conversation.request()
     tools_used: list[str] = []
 
     for _ in range(MAX_TOOL_ROUNDS):
@@ -125,25 +174,13 @@ def get_llm_response(message: str) -> tuple[str, list[str]]:
                 raise LLMServiceError("Gemini returned an empty response.")
             return result.text, tools_used
 
-        if not result.candidates or not result.candidates[0].content:
-            raise LLMServiceError("Gemini returned an invalid tool response.")
-        contents.append(result.candidates[0].content)
+        conversation.append_model_response(result)
 
         for tool_call in tool_calls:
             if tool_call.name and tool_call.name not in tools_used:
                 tools_used.append(tool_call.name)
-            contents.append(
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_function_response(
-                            name=tool_call.name or "",
-                            response={"result": _run_tool(tool_call)},
-                        )
-                    ],
-                )
-            )
+            conversation.append_tool_result(tool_call, _run_tool(tool_call))
 
-        result = _generate_response(client, contents)
+        result = conversation.request()
 
     raise LLMServiceError("The language model used too many tool-calling rounds.")

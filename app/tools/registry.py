@@ -1,19 +1,24 @@
-from typing import Any, Callable
+from __future__ import annotations
+
+from typing import Any
 
 from google.genai import types
 
-from .commands import run_command
 from .filesystem import list_files, read_file, write_file
+from .commands import run_command
+from .git import (
+    git_commit,
+    git_create_branch,
+    git_diff,
+    git_init,
+    git_status,
+)
 
 
 TOOL_DEFINITIONS = [
     {
-        "type": "function",
         "name": "list_files",
-        "description": (
-            "Recursively list files and directories inside workspace/. "
-            "Use this when you need to inspect the available project structure."
-        ),
+        "description": "List files and directories inside workspace/.",
         "parameters": {
             "type": "object",
             "properties": {},
@@ -21,22 +26,14 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "type": "function",
         "name": "read_file",
-        "description": (
-            "Read a UTF-8 text file inside workspace/ using a relative path. "
-            "Use this when you need the contents of a specific project file. "
-            "Absolute paths, path traversal, and binary files are rejected."
-        ),
+        "description": "Read a UTF-8 text file inside workspace/.",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Relative path inside workspace/, such as "
-                        "demo-project/README.md."
-                    ),
+                    "description": "Workspace-relative file path.",
                 }
             },
             "required": ["path"],
@@ -44,25 +41,18 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "type": "function",
         "name": "write_file",
-        "description": (
-            "Create or overwrite a UTF-8 text file inside workspace/. "
-            "Use this when you need to create or modify a project file. "
-            "The path must be relative and stay inside workspace/."
-        ),
+        "description": "Create or overwrite a UTF-8 text file inside workspace/.",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Relative path inside workspace/, such as demo-project/app.py."
-                    ),
+                    "description": "Workspace-relative file path.",
                 },
                 "content": {
                     "type": "string",
-                    "description": "The complete UTF-8 text content to write.",
+                    "description": "Complete text content to write.",
                 },
             },
             "required": ["path", "content"],
@@ -70,12 +60,10 @@ TOOL_DEFINITIONS = [
         },
     },
     {
-        "type": "function",
         "name": "run_command",
         "description": (
-            "Run one safe Python command from workspace/. Supported commands are "
-            "python <relative .py file>, python -m pytest, and python -m unittest. "
-            "Commands have a timeout and bounded output; shell commands are rejected."
+            "Run a safe allowlisted Python command inside workspace/. "
+            "Supported commands are Python workspace scripts, pytest, and unittest."
         ),
         "parameters": {
             "type": "object",
@@ -83,8 +71,10 @@ TOOL_DEFINITIONS = [
                 "command": {
                     "type": "string",
                     "description": (
-                        "One supported command, such as "
-                        "'python demo-project/hello.py' or 'python -m unittest'."
+                        "Allowed command such as "
+                        "'python demo-project/test.py', "
+                        "'python -m pytest', or "
+                        "'python -m unittest'."
                     ),
                 }
             },
@@ -92,14 +82,76 @@ TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "git_init",
+        "description": "Initialize a Git repository inside workspace/.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "git_status",
+        "description": "Show the current Git working-tree status inside workspace/.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "git_diff",
+        "description": "Show the current unstaged Git diff inside workspace/.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "git_create_branch",
+        "description": "Create and switch to a new Git branch inside workspace/.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Safe Git branch name.",
+                }
+            },
+            "required": ["branch_name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "git_commit",
+        "description": "Stage all workspace changes and create a Git commit.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Git commit message.",
+                }
+            },
+            "required": ["message"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
-TOOL_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
+TOOL_HANDLERS = {
     "list_files": list_files,
     "read_file": read_file,
     "write_file": write_file,
     "run_command": run_command,
+    "git_init": git_init,
+    "git_status": git_status,
+    "git_diff": git_diff,
+    "git_create_branch": git_create_branch,
+    "git_commit": git_commit,
 }
 
 
@@ -107,22 +159,24 @@ GEMINI_TOOLS = [
     types.Tool(
         function_declarations=[
             types.FunctionDeclaration(
-                name=definition["name"],
-                description=definition["description"],
-                parameters_json_schema=definition["parameters"],
+                name=tool["name"],
+                description=tool["description"],
+                parameters=tool["parameters"],
             )
-            for definition in TOOL_DEFINITIONS
         ]
     )
+    for tool in TOOL_DEFINITIONS
 ]
 
 
 def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Execute a registered tool with validated arguments."""
     handler = TOOL_HANDLERS.get(name)
+
     if handler is None:
-        return {"error": "Unknown tool."}
+        return {"error": f"Unknown tool: {name}"}
 
     try:
         return handler(**arguments)
     except TypeError:
-        return {"error": "The tool arguments were invalid."}
+        return {"error": f"Invalid arguments for tool: {name}"}

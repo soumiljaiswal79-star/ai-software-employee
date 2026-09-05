@@ -30,7 +30,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -45,7 +44,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["path"],
-            "additionalProperties": False,
         },
     },
     {
@@ -64,7 +62,6 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["path", "content"],
-            "additionalProperties": False,
         },
     },
     {
@@ -87,7 +84,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["command"],
-            "additionalProperties": False,
         },
     },
     {
@@ -96,7 +92,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -105,7 +100,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -114,7 +108,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -129,7 +122,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["branch_name"],
-            "additionalProperties": False,
         },
     },
     {
@@ -144,7 +136,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["message"],
-            "additionalProperties": False,
         },
     },
     {
@@ -162,7 +153,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["branch_name"],
-            "additionalProperties": False,
         },
     },
     {
@@ -174,7 +164,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -188,7 +177,9 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "owner": {
                     "type": "string",
-                    "description": "GitHub repository owner username or organization.",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
                 },
                 "repository": {
                     "type": "string",
@@ -196,18 +187,21 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["owner", "repository"],
-            "additionalProperties": False,
         },
     },
     {
         "name": "github_get_branch",
-        "description": "Check whether a GitHub branch exists and return its commit SHA.",
+        "description": (
+            "Check whether a GitHub branch exists and return its commit SHA."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "owner": {
                     "type": "string",
-                    "description": "GitHub repository owner username or organization.",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
                 },
                 "repository": {
                     "type": "string",
@@ -219,7 +213,6 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["owner", "repository", "branch"],
-            "additionalProperties": False,
         },
     },
     {
@@ -230,7 +223,9 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "owner": {
                     "type": "string",
-                    "description": "GitHub repository owner username or organization.",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
                 },
                 "repository": {
                     "type": "string",
@@ -242,11 +237,12 @@ TOOL_DEFINITIONS = [
                 },
                 "from_branch": {
                     "type": "string",
-                    "description": "Existing GitHub branch to create the new branch from.",
+                    "description": (
+                        "Existing GitHub branch to create the new branch from."
+                    ),
                 },
             },
             "required": ["owner", "repository", "branch"],
-            "additionalProperties": False,
         },
     },
     {
@@ -259,7 +255,9 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "owner": {
                     "type": "string",
-                    "description": "GitHub repository owner username or organization.",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
                 },
                 "repository": {
                     "type": "string",
@@ -289,7 +287,6 @@ TOOL_DEFINITIONS = [
                 "base",
                 "title",
             ],
-            "additionalProperties": False,
         },
     },
 ]
@@ -328,7 +325,10 @@ GEMINI_TOOLS = [
 ]
 
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def execute_tool(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
     """Execute a registered tool with validated arguments."""
     handler = TOOL_HANDLERS.get(name)
 

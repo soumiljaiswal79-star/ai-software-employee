@@ -14,8 +14,12 @@ from .llm import (
 from .tools.registry import execute_tool
 
 
-MAX_AUTONOMOUS_ITERATIONS = 5
-MAX_TOOL_ROUNDS_PER_ITERATION = 10
+# Keep the autonomous loop bounded for the MVP.
+# This prevents unnecessary Gemini requests while still allowing
+# inspect -> modify -> test -> fix -> retest.
+MAX_AUTONOMOUS_ITERATIONS = 3
+MAX_TOOL_ROUNDS_PER_ITERATION = 5
+
 
 AUTONOMOUS_INSTRUCTIONS = (
     "You are an autonomous software developer working only inside workspace/. "
@@ -30,6 +34,7 @@ AUTONOMOUS_INSTRUCTIONS = (
     "security mechanisms or application configuration. Stop once the task is "
     "verified or when the iteration limit is reached."
 )
+
 
 _SECRET_LIKE_TEXT = re.compile(
     r"(?i)(gemini_api_key|session_secret|api[_-]?key|secret)"
@@ -67,7 +72,10 @@ def _unique_append(values: list[str], value: Any) -> None:
         values.append(value)
 
 
-def _safe_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _safe_arguments(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
     if name == "write_file":
         return {
             "path": arguments.get("path"),
@@ -80,6 +88,7 @@ def _safe_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
     if name == "run_command":
         command = arguments.get("command")
+
         return {
             "command": (
                 _redact_text(command)
@@ -109,7 +118,10 @@ def _action_for_tool(name: str) -> str:
     return "other"
 
 
-def _run_status(name: str, result: dict[str, Any]) -> str:
+def _run_status(
+    name: str,
+    result: dict[str, Any],
+) -> str:
     if "error" in result:
         return "error"
 
@@ -270,8 +282,7 @@ def _build_task_plan(task: str) -> list[str]:
     Build a simple deterministic high-level plan.
 
     The actual implementation decisions are still made by the LLM.
-    The plan is intentionally generic so that this MVP does not require
-    an additional LLM request just to create a plan.
+    This avoids an additional Gemini request just to create a plan.
     """
     return [
         "Understand the requested software change.",
@@ -289,6 +300,7 @@ def run_software_task(
     conversation: GeminiConversation | None = None,
 ) -> TaskState:
     """Run one bounded autonomous software task and return its execution state."""
+
     if not isinstance(task, str) or not task.strip():
         raise ValueError("A software task is required.")
 

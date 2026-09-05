@@ -170,3 +170,74 @@ def github_create_branch(
 
     except GithubException:
         return _error("Unable to create GitHub branch.")
+
+
+def github_create_pull_request(
+    owner: str,
+    repository: str,
+    head: str,
+    base: str,
+    title: str,
+    body: str = "",
+) -> dict[str, Any]:
+    """Create a GitHub pull request from head into base."""
+    if not owner or not repository:
+        return _error("Repository owner and name are required.")
+
+    if not _valid_branch_name(head):
+        return _error("Invalid head branch name.")
+
+    if not _valid_branch_name(base):
+        return _error("Invalid base branch name.")
+
+    if head == base:
+        return _error("Head and base branches must be different.")
+
+    if not isinstance(title, str) or not title.strip():
+        return _error("Pull request title is required.")
+
+    title = title.strip()
+
+    if len(title) > 200:
+        return _error("Pull request title is too long.")
+
+    if not isinstance(body, str):
+        return _error("Pull request body must be text.")
+
+    if len(body) > 10_000:
+        return _error("Pull request body is too long.")
+
+    github = _get_client()
+
+    if github is None:
+        return _error("GITHUB_TOKEN is not configured.")
+
+    try:
+        repo = github.get_repo(f"{owner}/{repository}")
+
+        pull_request = repo.create_pull(
+            title=title,
+            body=body,
+            head=head,
+            base=base,
+        )
+
+        return {
+            "created": True,
+            "number": pull_request.number,
+            "title": pull_request.title,
+            "head": head,
+            "base": base,
+            "state": pull_request.state,
+            "url": pull_request.html_url,
+        }
+
+    except GithubException as error:
+        if getattr(error, "status", None) == 422:
+            return _error(
+                "Unable to create pull request. "
+                "The branches may have no differences, "
+                "or a pull request may already exist."
+            )
+
+        return _error("Unable to create GitHub pull request.")

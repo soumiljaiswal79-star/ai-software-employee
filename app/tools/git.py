@@ -25,6 +25,9 @@ def _error(message: str) -> dict[str, Any]:
 
 def _run_git(arguments: list[str]) -> dict[str, Any]:
     """Run one fixed Git operation inside workspace/."""
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+
     try:
         process = subprocess.run(
             ["git", *arguments],
@@ -34,10 +37,7 @@ def _run_git(arguments: list[str]) -> dict[str, Any]:
             stderr=subprocess.PIPE,
             text=True,
             timeout=COMMAND_TIMEOUT_SECONDS,
-            env={
-                "PATH": os.environ.get("PATH", ""),
-                "GIT_TERMINAL_PROMPT": "0",
-            },
+            env=environment,
         )
     except subprocess.TimeoutExpired:
         return _error("Git command timed out.")

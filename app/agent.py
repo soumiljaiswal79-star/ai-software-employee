@@ -14,8 +14,12 @@ from .llm import (
 from .tools.registry import execute_tool
 
 
-MAX_AUTONOMOUS_ITERATIONS = 5
-MAX_TOOL_ROUNDS_PER_ITERATION = 10
+# Keep the autonomous loop bounded for the MVP.
+# This prevents unnecessary Gemini requests while still allowing
+# inspect -> modify -> test -> fix -> retest.
+MAX_AUTONOMOUS_ITERATIONS = 3
+MAX_TOOL_ROUNDS_PER_ITERATION = 5
+
 
 AUTONOMOUS_INSTRUCTIONS = (
     "You are an autonomous software developer working only inside workspace/. "
@@ -31,16 +35,19 @@ AUTONOMOUS_INSTRUCTIONS = (
     "verified or when the iteration limit is reached."
 )
 
+
 _SECRET_LIKE_TEXT = re.compile(
     r"(?i)(gemini_api_key|session_secret|api[_-]?key|secret)"
     r"(\s*[:=]\s*)[^\s,;]+"
 )
+
 _TOKEN_LIKE_TEXT = re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b")
 
 
 @dataclass
 class TaskState:
     task: str
+    plan: list[str] = field(default_factory=list)
     current_iteration: int = 0
     maximum_iterations: int = MAX_AUTONOMOUS_ITERATIONS
     tools_used: list[dict[str, Any]] = field(default_factory=list)
@@ -65,7 +72,10 @@ def _unique_append(values: list[str], value: Any) -> None:
         values.append(value)
 
 
-def _safe_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def _safe_arguments(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
     if name == "write_file":
         return {
             "path": arguments.get("path"),
@@ -75,33 +85,55 @@ def _safe_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 else None
             ),
         }
+
     if name == "run_command":
         command = arguments.get("command")
-        return {"command": _redact_text(command) if isinstance(command, str) else None}
+
+        return {
+            "command": (
+                _redact_text(command)
+                if isinstance(command, str)
+                else None
+            )
+        }
+
     if name == "read_file":
-        return {"path": arguments.get("path")}
+        return {
+            "path": arguments.get("path")
+        }
+
     return {}
 
 
 def _action_for_tool(name: str) -> str:
     if name in {"list_files", "read_file"}:
         return "inspection"
+
     if name == "write_file":
         return "modification"
+
     if name == "run_command":
         return "test_execution"
+
     return "other"
 
 
-def _run_status(name: str, result: dict[str, Any]) -> str:
+def _run_status(
+    name: str,
+    result: dict[str, Any],
+) -> str:
     if "error" in result:
         return "error"
+
     if name != "run_command":
         return "success"
+
     if result.get("timed_out"):
         return "timed_out"
+
     if result.get("exit_code") == 0:
         return "passed"
+
     return "failed"
 
 
@@ -113,6 +145,7 @@ def _record_tool_call(
     iteration: int,
 ) -> None:
     result_status = _run_status(name, result)
+
     state.tools_used.append(
         {
             "tool": name,
@@ -124,12 +157,26 @@ def _record_tool_call(
     )
 
     if name == "read_file" and result_status == "success":
-        _unique_append(state.files_read, result.get("path"))
+        _unique_append(
+            state.files_read,
+            result.get("path"),
+        )
+
     elif name == "write_file" and result_status == "success":
-        _unique_append(state.files_modified, result.get("path"))
+        _unique_append(
+            state.files_modified,
+            result.get("path"),
+        )
+
     elif name == "run_command":
         command = arguments.get("command", "")
-        command = _redact_text(command) if isinstance(command, str) else ""
+
+        command = (
+            _redact_text(command)
+            if isinstance(command, str)
+            else ""
+        )
+
         command_record = {
             "command": command,
             "status": result_status,
@@ -137,12 +184,18 @@ def _record_tool_call(
             "timed_out": bool(result.get("timed_out")),
             "iteration": iteration,
         }
+
         state.commands_run.append(command_record)
+
         state.test_results.append(
             {
                 **command_record,
-                "stdout": _redact_text(str(result.get("stdout", ""))),
-                "stderr": _redact_text(str(result.get("stderr", ""))),
+                "stdout": _redact_text(
+                    str(result.get("stdout", ""))
+                ),
+                "stderr": _redact_text(
+                    str(result.get("stderr", ""))
+                ),
             }
         )
 
@@ -165,29 +218,80 @@ def _execute_tracked_tool(
     arguments = function_call.args
 
     if not isinstance(name, str) or not name:
-        result = {"error": "Malformed tool call."}
-        _record_tool_call(state, "", {}, result, iteration)
-        return result
-    if arguments is None:
-        arguments = {}
-    if not isinstance(arguments, dict):
-        result = {"error": "Malformed tool call."}
-        _record_tool_call(state, name, {}, result, iteration)
+        result = {
+            "error": "Malformed tool call."
+        }
+
+        _record_tool_call(
+            state,
+            "",
+            {},
+            result,
+            iteration,
+        )
+
         return result
 
-    result = execute_tool(name, arguments)
-    _record_tool_call(state, name, arguments, result, iteration)
+    if arguments is None:
+        arguments = {}
+
+    if not isinstance(arguments, dict):
+        result = {
+            "error": "Malformed tool call."
+        }
+
+        _record_tool_call(
+            state,
+            name,
+            {},
+            result,
+            iteration,
+        )
+
+        return result
+
+    result = execute_tool(
+        name,
+        arguments,
+    )
+
+    _record_tool_call(
+        state,
+        name,
+        arguments,
+        result,
+        iteration,
+    )
+
     return result
 
 
 def _continuation_prompt(iteration: int) -> str:
     return (
-        f"Continue the same software task in autonomous iteration {iteration} "
-        f"of {MAX_AUTONOMOUS_ITERATIONS}. Use the existing tool results as the "
-        "source of truth. If the last test failed, inspect the failure and fix "
-        "the smallest relevant file, then rerun the test. If it passed, stop "
-        "and provide a concise evidence-based report."
+        f"Continue the same software task in autonomous iteration "
+        f"{iteration} of {MAX_AUTONOMOUS_ITERATIONS}. "
+        "Use the existing tool results as the source of truth. "
+        "If the last test failed, inspect the failure and fix the "
+        "smallest relevant file, then rerun the test. "
+        "If it passed, stop and provide a concise evidence-based report."
     )
+
+
+def _build_task_plan(task: str) -> list[str]:
+    """
+    Build a simple deterministic high-level plan.
+
+    The actual implementation decisions are still made by the LLM.
+    This avoids an additional Gemini request just to create a plan.
+    """
+    return [
+        "Understand the requested software change.",
+        "Inspect the relevant files in workspace/.",
+        "Implement the smallest reasonable code change.",
+        "Run appropriate tests and inspect the actual results.",
+        "Fix any failures and retest until the change is verified.",
+        "Report the completed changes and verification results.",
+    ]
 
 
 def run_software_task(
@@ -196,54 +300,90 @@ def run_software_task(
     conversation: GeminiConversation | None = None,
 ) -> TaskState:
     """Run one bounded autonomous software task and return its execution state."""
+
     if not isinstance(task, str) or not task.strip():
         raise ValueError("A software task is required.")
 
-    state = TaskState(task=task)
+    task = task.strip()
+
+    state = TaskState(
+        task=task,
+        plan=_build_task_plan(task),
+    )
+
     conversation = conversation or GeminiConversation(
         task,
         system_instruction=AUTONOMOUS_INSTRUCTIONS,
     )
 
-    for iteration in range(1, MAX_AUTONOMOUS_ITERATIONS + 1):
+    for iteration in range(
+        1,
+        MAX_AUTONOMOUS_ITERATIONS + 1,
+    ):
         state.current_iteration = iteration
+
         if iteration > 1:
-            conversation.append_user_message(_continuation_prompt(iteration))
+            conversation.append_user_message(
+                _continuation_prompt(iteration)
+            )
 
         final_text = ""
-        for _ in range(MAX_TOOL_ROUNDS_PER_ITERATION):
+
+        for _ in range(
+            MAX_TOOL_ROUNDS_PER_ITERATION
+        ):
             response = conversation.request()
+
             tool_calls = _function_calls(response)
+
             if not tool_calls:
                 final_text = response.text or ""
                 break
 
-            conversation.append_model_response(response)
+            conversation.append_model_response(
+                response
+            )
+
             for tool_call in tool_calls:
-                result = _execute_tracked_tool(state, tool_call, iteration)
-                conversation.append_tool_result(tool_call, result)
+                result = _execute_tracked_tool(
+                    state,
+                    tool_call,
+                    iteration,
+                )
+
+                conversation.append_tool_result(
+                    tool_call,
+                    result,
+                )
 
         if final_text:
-            state.final_message = _redact_text(final_text)
+            state.final_message = _redact_text(
+                final_text
+            )
 
         if _has_verified_test(state):
             state.status = "completed"
+
             if not state.final_message:
                 state.final_message = (
-                    "The task was completed and verified by a successful test command."
+                    "The task was completed and verified "
+                    "by a successful test command."
                 )
+
             return state
 
     state.status = "max_iterations_reached"
+
     if not state.final_message:
         state.final_message = (
-            "The task was not verified successfully within the maximum number "
-            "of autonomous iterations."
+            "The task was not verified successfully "
+            "within the maximum number of autonomous iterations."
         )
     else:
         state.final_message = (
             f"{state.final_message}\n\n"
-            "The task was not verified successfully within the maximum number "
-            "of autonomous iterations."
+            "The task was not verified successfully "
+            "within the maximum number of autonomous iterations."
         )
+
     return state

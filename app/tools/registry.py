@@ -11,7 +11,15 @@ from .git import (
     git_create_branch,
     git_diff,
     git_init,
+    git_push,
     git_status,
+)
+from .github import (
+    github_auth_status,
+    github_create_branch,
+    github_create_pull_request,
+    github_get_branch,
+    github_get_repository,
 )
 
 
@@ -22,7 +30,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -37,7 +44,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["path"],
-            "additionalProperties": False,
         },
     },
     {
@@ -56,7 +62,6 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["path", "content"],
-            "additionalProperties": False,
         },
     },
     {
@@ -79,7 +84,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["command"],
-            "additionalProperties": False,
         },
     },
     {
@@ -88,7 +92,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -97,7 +100,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -106,7 +108,6 @@ TOOL_DEFINITIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
-            "additionalProperties": False,
         },
     },
     {
@@ -121,7 +122,6 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["branch_name"],
-            "additionalProperties": False,
         },
     },
     {
@@ -136,7 +136,157 @@ TOOL_DEFINITIONS = [
                 }
             },
             "required": ["message"],
-            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "git_push",
+        "description": (
+            "Push a local Git branch to the configured origin remote. "
+            "Only pushes the specified branch."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string",
+                    "description": "Safe Git branch name to push.",
+                }
+            },
+            "required": ["branch_name"],
+        },
+    },
+    {
+        "name": "github_auth_status",
+        "description": (
+            "Check whether the configured GitHub token is valid and return "
+            "the authenticated GitHub username. Never expose the token."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "github_get_repository",
+        "description": (
+            "Check whether the authenticated GitHub account can access a "
+            "specific repository and return basic repository information."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+            },
+            "required": ["owner", "repository"],
+        },
+    },
+    {
+        "name": "github_get_branch",
+        "description": (
+            "Check whether a GitHub branch exists and return its commit SHA."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "GitHub branch name.",
+                },
+            },
+            "required": ["owner", "repository", "branch"],
+        },
+    },
+    {
+        "name": "github_create_branch",
+        "description": "Create a new GitHub branch from an existing branch.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "New GitHub branch name.",
+                },
+                "from_branch": {
+                    "type": "string",
+                    "description": (
+                        "Existing GitHub branch to create the new branch from."
+                    ),
+                },
+            },
+            "required": ["owner", "repository", "branch"],
+        },
+    },
+    {
+        "name": "github_create_pull_request",
+        "description": (
+            "Create a GitHub pull request from a head branch into a base branch."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository owner username or organization."
+                    ),
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+                "head": {
+                    "type": "string",
+                    "description": "Source branch containing the changes.",
+                },
+                "base": {
+                    "type": "string",
+                    "description": "Target branch that should receive the changes.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Pull request title.",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Pull request description.",
+                },
+            },
+            "required": [
+                "owner",
+                "repository",
+                "head",
+                "base",
+                "title",
+            ],
         },
     },
 ]
@@ -152,6 +302,12 @@ TOOL_HANDLERS = {
     "git_diff": git_diff,
     "git_create_branch": git_create_branch,
     "git_commit": git_commit,
+    "git_push": git_push,
+    "github_auth_status": github_auth_status,
+    "github_get_repository": github_get_repository,
+    "github_get_branch": github_get_branch,
+    "github_create_branch": github_create_branch,
+    "github_create_pull_request": github_create_pull_request,
 }
 
 
@@ -169,7 +325,10 @@ GEMINI_TOOLS = [
 ]
 
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def execute_tool(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
     """Execute a registered tool with validated arguments."""
     handler = TOOL_HANDLERS.get(name)
 

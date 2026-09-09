@@ -25,6 +25,9 @@ def _error(message: str) -> dict[str, Any]:
 
 def _run_git(arguments: list[str]) -> dict[str, Any]:
     """Run one fixed Git operation inside workspace/."""
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+
     try:
         process = subprocess.run(
             ["git", *arguments],
@@ -34,10 +37,7 @@ def _run_git(arguments: list[str]) -> dict[str, Any]:
             stderr=subprocess.PIPE,
             text=True,
             timeout=COMMAND_TIMEOUT_SECONDS,
-            env={
-                "PATH": os.environ.get("PATH", ""),
-                "GIT_TERMINAL_PROMPT": "0",
-            },
+            env=environment,
         )
     except subprocess.TimeoutExpired:
         return _error("Git command timed out.")
@@ -120,3 +120,30 @@ def git_commit(message: str) -> dict[str, Any]:
         return staged_result
 
     return _run_git(["commit", "-m", message])
+
+
+def git_push(branch_name: str) -> dict[str, Any]:
+    """Push a local branch to the configured origin remote."""
+    if not isinstance(branch_name, str) or not branch_name.strip():
+        return _error("A branch name is required.")
+
+    branch_name = branch_name.strip()
+
+    if len(branch_name) > 100:
+        return _error("Branch name is too long.")
+
+    if not _BRANCH_NAME_PATTERN.fullmatch(branch_name):
+        return _error("Invalid branch name.")
+
+    if ".." in branch_name:
+        return _error("Branch name cannot contain '..'.")
+
+    if branch_name.startswith("-"):
+        return _error("Branch name cannot start with '-'.")
+
+    return _run_git([
+        "push",
+        "--set-upstream",
+        "origin",
+        branch_name,
+    ])
